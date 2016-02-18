@@ -605,10 +605,3 @@ def astro_lab_register(viewer) :
     viewer.exam.register({'f': (fit_2d, 'Compute the 2d fit to the sample of data using the specified form')})
     viewer.exam.fit2d_pars = fit2d_pars
 
-# Remove this later on
-ds9 = pyds9.DS9('lab')
-view = imexam.connect('lab')
-astro_lab_register(view)
-data = fits.getdata('east-14/2014_02_07/d0004.fits')
-view.view(data)
-view.imexam()
