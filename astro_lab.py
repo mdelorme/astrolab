@@ -9,18 +9,21 @@ sys.path.insert(0, '/user/phstf/md0046/tools/photutils/build/lib.linux-x86_64-2.
 # Importing basic utils
 import pyds9
 import imexam
+import time
 import pyfits as fits
 import numpy as np
 from scipy import optimize
 import math
+import matplotlib.pyplot as plt
 from ctypes import c_longlong as ll
+from imexam import math_helper
 
 fit2d_pars = {
     'title': ['', 'Title of the plot'],
     'xlabel': ['Radius', 'X-axis label'], 
     'ylabel': ['Pixel value', 'Y-axis label'],
     'fitplot': [True, 'Overplot profile fit?'],
-    'fittype': ['moffat', 'Profile type to fit'],
+    'fittype': ['gaussian', 'Profile type to fit'],
     'center': [False, 'Center object in aperture?'],
     'background': [True, 'Fit and subtract background?'],
     'radius': [17., 'Object radius'],
@@ -31,7 +34,7 @@ fit2d_pars = {
     'yorder': [0, 'Background y order'],
     'magzero': [25., 'Magnitude zero point'],
     'beta': ['INDEF', 'Moffat beta parameter'],
-    'rplot': [30., 'Plotting radius'],
+    'rplot': [20., 'Plotting radius'],
     'x1': ['INDEF', 'X-axis window limit'],
     'x2': ['INDEF', 'X-axis window limit'],
     'y1': ['INDEF', 'Y-axis window limit'],
@@ -87,7 +90,10 @@ def export_headers(file_out, folder):
     for f in os.listdir(folder):
         if f[-5:] == '.fits' and f[0] != '.':
             header = fits.getheader(folder+'/'+f)
-            fout.write('{0} {1}\n'.format(header['DATE-OBS'], header['EXPTIME']))
+            if 'DATE-OBS' not in header or 'EXPTIME' not in header:
+                print('Warning : Date of observation or exposition time not found in meta-data of file : ' + folder + '/' + f)
+            else:
+                fout.write('{0} {1}\n'.format(header['DATE-OBS'], header['EXPTIME']))
 
     fout.close()
 
@@ -171,6 +177,96 @@ def ie_moffat_b(x, i0, sigma, b):
     y = 1.0 + (r / sigma) ** 2
     return i0 * y**b
 
+
+def gauss_eval_p(x, I0, sigma):
+    return I0 * np.exp(-0.5*(x[:,0]**2+x[:,1]**2)/sigma**2)
+
+def gauss_eval_r(r, I0, sigma):
+    return I0 * np.exp(-0.5*(r/sigma)**2)
+
+def fit_2d_new(self, x, y, data, form=None, subsample=4, fig=None):
+    params = self.fit2d_pars
+
+    if not form:
+        form = params["fittype"][0]
+
+    if form not in ('gaussian', 'moffat'):
+        warnings.warn('Error : The fitting function must be either \'gaussian\' or \'moffat\'')
+        return
+
+    center = params["center"][0]
+    background = params["background"][0]
+    radius = params["radius"][0]
+    buffer = params["buffer"][0]
+    width = params["width"][0]
+    xorder = params["xorder"][0]
+    yorder = params["yorder"][0]
+    medsky = xorder <= 0 or yorder <= 0
+    loc_beta = params["beta"][0]
+
+    magzero = params["magzero"][0]
+    rplot = params["rplot"][0]
+    fitplot = params["fitplot"][0]
+        
+    centerx, centery = x, y
+
+    if center:
+        popt = self.gauss_center(x, y, data, delta=rplot)
+        if popt.count(0) > 1:
+            warnings.warn('Problem fitting the center, using original coordinates')
+        else:
+            amp, centerx, centery, sigma, offset = popt
+
+    # No background subtraction yet
+    chunk = data[centery-rplot:centery+rplot, centerx-rplot:centerx+rplot]
+    xr = np.arange(centerx-rplot, centerx+rplot) - centerx
+    yr = np.arange(centery-rplot, centery+rplot) - centery
+    X, Y = np.meshgrid(xr, yr)
+    p = np.dstack((X.ravel(), Y.ravel()))[0]
+
+    popt, pcov = optimize.curve_fit(gauss_eval_p, p, chunk.ravel())
+    max_dist = math.sqrt(rplot**2+rplot**2)
+    nfitpts = 100
+    gx = np.linspace(0.0, max_dist, nfitpts)
+    gy = gauss_eval_r(gx, *popt)
+
+    print(p.shape)
+    dist = np.sqrt(p[:,0]**2+p[:,1]**2)
+    print(dist.shape)
+    print(dist.mean(), dist.min(), dist.max())
+
+    if fig is None:
+        fig = plt.figure(self._figure_name)
+
+    fig.clf()
+    fig.add_subplot(111)
+    ax = fig.gca()
+    ax.set_xlabel(params['xlabel'][0])
+    ax.set_ylabel(params['ylabel'][0])
+    if params["logx"][0]:
+        ax.set_xscale("log")
+    if params["logy"][0]:
+        ax.set_yscale("log")
+
+    ax.plot(dist, chunk.ravel(), params['marker'][0], label='data')
+    ax.plot(gx, gy, c='r', label= form + " fit")
+    plt.legend()
+    plt.draw()
+    plt.show(block=False)    
+    time.sleep(self.sleep_time)
+    
+
+
+
+
+
+
+
+
+
+
+
+
 def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
         """Compute the 2d fit to the sample of data using the specified form
 
@@ -182,14 +278,9 @@ def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
             Currently 'gaussian' or 'moffat'
 
         """
-        cnt = 0
-        print('Dbg : ' + str(cnt))
-        cnt+=1
-
         amp = 0
         sigma = 0
         params = self.fit2d_pars
-        print(params)
 
         if not form:
             form = params["fittype"][0]
@@ -197,9 +288,6 @@ def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
         if form not in ('gaussian', 'moffat'):
             warnings.warn('Error : The fitting function must be either \'gaussian\' or \'moffat\'')
             return
-
-        print('Dbg : ' + str(cnt))
-        cnt+=1  
 
         center = params["center"][0]
 	background = params["background"][0]
@@ -217,12 +305,14 @@ def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
 
 	# Center
 	if center:
-            xcntr, ycntr = ie_center(im, radius, x, y) # Does not work yet
+            popt = self.gauss_center(x, y, im, delta=rplot)
+            if popt.count(0) > 1:
+                xcntr = x
+                ycntr = y
+                warnings.warn('Problem fitting the center, using original coordinates')
+            amp, xcntr, ycntr, sigma, offset = popt
         else:
             xcntr, ycntr = x, y
-
-        print('Dbg : ' + str(cnt))
-        cnt+=1
 
         """ No idea the purpose of this part ...
         # Do the enclosed flux and direct FWHM measurments using the
@@ -240,30 +330,23 @@ def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
             buffer = 0.0
             width = 0.0
 
-        print('Dbg : ' + str(cnt))
-        cnt+=1
-
-        import numpy as np 
+        #import numpy as np 
 
         r = max(rplot, radius + buffer + width)
-        print(rplot, radius + buffer + width, r)
 	x1 = int(xcntr - r)
 	x2 = int(xcntr + r)
 	y1 = int(ycntr - r)
 	y2 = int(ycntr + r)
-        print(x1, x2, y1, y2)
         data = im[y1:y2+1, x1:x2+1]
         lindat = np.ravel(data)
         ny, nx = data.shape
         npts = nx*ny
-
+        print(im.shape, r, xcntr, ycntr)
+        print(x1, x2, y1, y2)
         print(npts)
         xs = np.zeros((npts,), dtype=np.float32)
         ys = np.zeros((npts,), dtype=np.float32)
         zs = np.zeros((npts,), dtype=np.float32)
-
-        print('Dbg : ' + str(cnt))
-        cnt+=1
 
         # Extract the background data if background subtracting.
 	ns = 0
@@ -288,9 +371,6 @@ def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
 		    lid += 1
 
         
-        print('Dbg : ' + str(cnt))
-        cnt+=1
-
         # Accumulate the various sums for the moments and the gaussian fit.
 	no = 0
 	nps = 0
@@ -308,7 +388,6 @@ def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
 	    # the fitted background from within the object aperture. 
 
 	    if medsky:
-                print(zs[:ns])
                 tmp = sorted(list(zs[:ns]))
 		bkg = tmp[len(tmp)//2] # np.median(zs[:ns], axis=1)
 	    else:
@@ -395,10 +474,6 @@ def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
 
                     lid += 1
 
-        print('Dbg : ' + str(cnt))
-        cnt+=1
-        
-
         # What's that ?
         if nps > 0:
             xs[npts-nps:npts] = xs[no:no+nps]
@@ -411,14 +486,13 @@ def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
 	else:
 	    nps += no
 
-        print(xs.shape, ys.shape)
-        p = np.dstack((xs, ys))
+        p = np.dstack((xs, ys))[0]
         # Compute the photometry and profile fit parameters.
         if form == 'gaussian':
-            par = [zcntr, dfwhm**2 / (8 * log(2.))]
-            popt, = optimize.curve_fit(ie_gauss, p, zs, p0=par)
+            par = [zcntr, dfwhm**2 / (8 * math.log(2.))]
+            popt, pcor = optimize.curve_fit(ie_gauss, p, zs, p0=par)
             zcntr = popt[0]
-            fwhm = math.sqrt(8.0*log(2.0)*popt[1])
+            dfwhm = math.sqrt(8.0*math.log(2.0)*popt[1])
         elif form == 'moffat':
             global beta
             if loc_beta == 'INDEF':
@@ -430,22 +504,23 @@ def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
                 par = [zcntr, dfwhm / 2. / math.sqrt (2.**(-1./beta) - 1.), beta]
                 func = ie_moffat_b
             
-            popt, = optimize.curve_fit(ie_gauss, p, zs, p0=par)
+            popt, pcor= optimize.curve_fit(ie_gauss, p, zs, p0=par)
             if popt[1] < 0:
                 zcntr = None
                 fhwm = None
                 beta = None
             else:
                 zcntr = popt[0]
-                beta  = -popt[2]
-                fwhm = abs(popt[1])*2.0*sqrt(2.0**(-1.0/popt[2])-1.0)
+                if len(popt) > 2:
+                    beta  = -popt[2]
+                dfwhm = abs(popt[1])*2.0*math.sqrt(2.0**(-1.0/beta)-1.0)
 
         if sumo > 0:
             mag = magzero - 2.5 * math.log(sumo, 10)
 	    r2 = sumxx + sumyy
 	    if r2 > 0:
                 if form == 'gaussian':
-		    r = 2 * math.sqrt (log (2.) * r2 / sumo)
+		    r = 2 * math.sqrt (math.log (2.) * r2 / sumo)
                 elif form == 'moffat':
 		    if beta > 2:
 			r = 2 * math.sqrt ((beta-2.)*(2.**(1./beta)-1) * r2 / sumo)
@@ -459,7 +534,7 @@ def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
 	    if e < 0.01:
 		e = 0.
 	    else:
-		pa = 180.0/math.pi * (0.5 * atan2 (2*sumxy, sumxx-sumyy))
+		pa = 180.0/math.pi * (0.5 * math.atan2 (2*sumxy, sumxx-sumyy))
 
         '''
         call ie_mwctran (ie, xcntr, ycntr, wxcntr, wycntr)
@@ -487,17 +562,27 @@ def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
         val  = np.zeros((npts,))
         
         lid = 0
-        for i in xrange(x1, x2+1):
-            for j in xrange(y1, y2+1):
-                dist[j, i] = math.sqrt((xcntr - i)**2 + (ycntr - j)**2)
-                val = data[j, i]
+        for i in range(nx):
+            for j in range(ny):
+                dist[lid] = math.sqrt((xcntr - (i+x1))**2 + (ycntr - (j+y1))**2)
+                val[lid] = data[j, i]
+                lid+=1
         
         ncurve = 100
         gx = np.linspace(dist.min(), dist.max(), num=ncurve)
+
+        #if form == 'gaussian':
+        #    fwhm = math_helper.gfwhm(sigma)
+        #else:
+        #    fwhm = math_helper.mfwhm(sigma)
+        print('I0 = ' + str(zcntr))
+        #print('g(0) = ' + str(gs_eval_r(0, zcntr, sigma)))
+        #print('g*(0) = ' + str(gs_eval_r(0, dfwhm, sigma)))
+        #print('g+(0) = ' + str(gs_eval_r(0, zcntr, dfwhm)))
         if form == 'gaussian':
-            gy = gs_eval_r(dist, zcntr, fhwm)
+            gy = gs_eval_r(gx, zcntr, sigma)
         else:
-            gy = gs_eval_r(dist, zcntr, fhwm, beta)
+            gy = moffat_eval_r(gx, zcntr, dfwhm, beta)
 
         fig.clf()
         fig.add_subplot(111)
@@ -509,7 +594,9 @@ def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
         if params["logy"][0]:
             ax.set_yscale("log")
 
-        ax.plot(dist, val, chunk, params['marker'], label='data')
+        print(np.dstack((gx, gy)))
+
+        ax.plot(dist, val, params['marker'][0], label='data')
         ax.plot(gx, gy, c='r', label= form + " fit")
         plt.legend()
         plt.draw()
@@ -602,6 +689,15 @@ def fit_2d(self, x, y, im, form=None, subsample=4, fig=None):
         '''
 
 def astro_lab_register(viewer) :
-    viewer.exam.register({'f': (fit_2d, 'Compute the 2d fit to the sample of data using the specified form')})
+    viewer.exam.register({'f': (fit_2d_new, 'Compute the 2d fit to the sample of data using the specified form')})
     viewer.exam.fit2d_pars = fit2d_pars
 
+
+# Remove this later on
+ds9 = pyds9.DS9('lab')
+view = imexam.connect('lab')
+astro_lab_register(view)
+data = fits.getdata('east-14/2014_02_07/d0004.fits')
+view.view(data)
+view.scale('log')
+view.imexam()
