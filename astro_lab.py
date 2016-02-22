@@ -18,13 +18,14 @@ import matplotlib.pyplot as plt
 from ctypes import c_longlong as ll
 from imexam import math_helper
 
+# Parameter dictionnary for our imexam routine
 fit2d_pars = {
     'title': ['', 'Title of the plot'],
     'xlabel': ['Radius', 'X-axis label'], 
     'ylabel': ['Pixel value', 'Y-axis label'],
     'fitplot': [True, 'Overplot profile fit?'],
     'fittype': ['gaussian', 'Profile type to fit'],
-    'center': [False, 'Center object in aperture?'],
+    'center': [True, 'Center object in aperture?'],
     'background': [True, 'Fit and subtract background?'],
     'radius': [17., 'Object radius'],
     'buffer': [5., 'Background buffer width'],
@@ -49,8 +50,15 @@ fit2d_pars = {
     'majry': ['5', 'Number of major divisions along y grid'],
     'minry': ['5', 'Number of minor divisions along y grid']}
 
-# Functions used for the lab that are not present (or weren't found in astropy)
+# Functions not found in any package that are required for the lab
 def combine(file_list, ctype='median'):
+    """
+    Combines the files listed in file_list using a specific method
+    
+    Arguments:
+    file_list -- a string indicating a filename. 
+    ctype -- the method to use to combine the images listed in file_list. For the moment, only 'median' is implemented
+    """
     f = open(file_list)
     fits_files = []
     for filename in f:
@@ -86,6 +94,9 @@ def combine(file_list, ctype='median'):
     return output
 
 def export_headers(file_out, folder):
+    """
+    Exports all of the observation and exposure times present in folder to a file (file_out). 
+    """
     fout = open(file_out, 'w')
     for f in os.listdir(folder):
         if f[-5:] == '.fits' and f[0] != '.':
@@ -98,91 +109,18 @@ def export_headers(file_out, folder):
     fout.close()
 
 
-def ie_center(im, radius, xcntr, ycntr):
-    """
-    Find the center of a star image given approximate coords.  Uses
-    Mountain Photometry Code Algorithm as outlined in Stellar Magnitudes
-    from Digital Images.
-    """
-    for k in range(3):
-        # Extract region around center
-        xlast = xcntr
-        ylast = ycntr
-        x1 = int(xcntr - radius + 0.5)
-        x2 = int(xcntr + radius + 0.5)
-        y1 = int(ycntr - radius + 0.5)
-        y2 = int(ycntr + radius + 0.5)
-        data = im[y1:y2+1, x1:x2+1]
+def gauss_p(x, I0, sigma, offset):
+    """ Gaussian function on a vector of points (x,y)"""
+    return I0 * np.exp(-0.5*(x[:,0]**2+x[:,1]**2)/sigma**2) + offset
 
-        ny, nx = data.shape
-        npts = nx * ny
+def gauss_r(r, I0, sigma, offset):
+    """ Gaussian function on a vector of distances (r)"""
+    return I0 * np.exp(-0.5*(r/sigma)**2) + offset
 
-        # Find center of gravity for marginal distributions above mean.
-        S = data.sum()
-        mean = S / nx
-        sum1 = 0
-        sum2 = 0
+def gauss_center_p(x, I0, sigma, offset, x0, y0):
+    """ Gaussian function used to fit the center of the point """
+    return I0 * np.exp(-0.5*((x0-x[:,0])**2 + (y0-x[:,1])**2)/sigma**2) + offset
 
-        for i in range(nx):
-            sum3 = data[:,i].sum() - mean
-            if sum3 > 0:
-                sum1 += i * sum3
-                sum2 += sum3
-
-        if abs(sum2) > 1e-5:
-            xcntr = sum1 / sum2
-
-        mean = S / ny
-        sum1 = 0.
-        sum2 = 0.
-
-        for i in range(ny):
-            sum3 = data[i,:].sum() - mean
-            if sum3 > 0:
-                sum1 += i * sum3
-                sum2 += sum3
-
-        if abs(sum2) > 1e-5:
-            ycntr = sum1 / sum2
-
-        if abs(xcntr - xlast) < 1e-5 and abs(ycntr - ylast) < 1e-5:
-            break
-
-    return xcntr, ycntr
-
-
-def gs_eval(x, y, sigma):
-    return np.exp(-0.5*(x**2 + y**2) / sigma**2)
-
-def gs_eval_r(r, i0, sigma):
-    return i0 * np.exp(-0.5*r**2 / sigma**2)
-
-def moffat_eval_r(r, i0, sigma, b):
-    y = 1.0 + (r / sigma) ** 2
-    return i0 * y**b
-
-def ie_gauss(x, i0, sigma):
-    r = np.sqrt(x[:,0]**2 + x[:,1]**2)
-    r2 = r**2 / (2.0*sigma)
-    return i0 * np.exp(-r2)
-
-beta = 0.0
-def ie_moffat_fixed_b(x, i0, sigma):
-    r = np.sqrt(x[:,0]**2 + x[:,1]**2)
-    y = 1.0 + (r / sigma) ** 2
-    return i0 * y**beta
-
-def ie_moffat_b(x, i0, sigma, b):
-    r = np.sqrt(x[:,0]**2 + x[:,1]**2)
-    y = 1.0 + (r / sigma) ** 2
-    return i0 * y**b
-
-
-def gauss_eval_p(x, I0, sigma):
-    return I0 * np.exp(-0.5*(x[:,0]**2+x[:,1]**2)/sigma**2)
-
-def gauss_eval_r(r, I0, sigma):
-    return I0 * np.exp(-0.5*(r/sigma)**2)
 
 def fit_2d_new(self, x, y, data, form=None, subsample=4, fig=None):
     params = self.fit2d_pars
@@ -210,30 +148,49 @@ def fit_2d_new(self, x, y, data, form=None, subsample=4, fig=None):
         
     centerx, centery = x, y
 
-    if center:
-        popt = self.gauss_center(x, y, data, delta=rplot)
-        if popt.count(0) > 1:
-            warnings.warn('Problem fitting the center, using original coordinates')
-        else:
-            amp, centerx, centery, sigma, offset = popt
-
-    # No background subtraction yet
     chunk = data[centery-rplot:centery+rplot, centerx-rplot:centerx+rplot]
     xr = np.arange(centerx-rplot, centerx+rplot) - centerx
     yr = np.arange(centery-rplot, centery+rplot) - centery
     X, Y = np.meshgrid(xr, yr)
     p = np.dstack((X.ravel(), Y.ravel()))[0]
 
-    popt, pcov = optimize.curve_fit(gauss_eval_p, p, chunk.ravel())
+    if center:
+        if form == 'gaussian':
+            func = gauss_center_p
+            parnames = ['I0', 'sigma', 'x0', 'y0', 'offset']
+        else:
+            func = 0 # TODO : moffat_center
+    else:
+        if form == 'gaussian':
+            func = gauss_p
+            parnames = ['I0', 'sigma', 'offset']
+        else:
+            func = 0 # TODO moffat_p
+
+    popt, pcov = optimize.curve_fit(func, p, chunk.ravel())
+
+    print('2D fit, results : ')
+    print('\t'.join(parnames))
+    print('\t'.join(str(x) for x in popt))
+
+    # If we have enabled centering then we retrieve the new values :
+    if center:
+        # TODO : retrieve center in image coordinates
+        centerx, centery = popt[3:]
+        popt = popt[0:3]
+
+        
+
+    # No background subtraction yet
     max_dist = math.sqrt(rplot**2+rplot**2)
     nfitpts = 100
-    gx = np.linspace(0.0, max_dist, nfitpts)
-    gy = gauss_eval_r(gx, *popt)
+    fx = np.linspace(0.0, max_dist, nfitpts)
+    if form == 'gaussian':
+        fy = gauss_r(fx, *popt)
+    else:
+        fy = 0 # TODO moffat_r
 
-    print(p.shape)
     dist = np.sqrt(p[:,0]**2+p[:,1]**2)
-    print(dist.shape)
-    print(dist.mean(), dist.min(), dist.max())
 
     if fig is None:
         fig = plt.figure(self._figure_name)
@@ -249,7 +206,7 @@ def fit_2d_new(self, x, y, data, form=None, subsample=4, fig=None):
         ax.set_yscale("log")
 
     ax.plot(dist, chunk.ravel(), params['marker'][0], label='data')
-    ax.plot(gx, gy, c='r', label= form + " fit")
+    ax.plot(fx, fy, c='r', label= form + " fit")
     plt.legend()
     plt.draw()
     plt.show(block=False)    
