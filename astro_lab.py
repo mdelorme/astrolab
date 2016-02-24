@@ -15,6 +15,7 @@ import numpy as np
 from scipy import optimize
 import math
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from ctypes import c_longlong as ll
 from imexam import math_helper
 
@@ -43,7 +44,7 @@ fit2d_pars = {
     'marker': ['+', 'Marker character?'],
     'szmarker': [1., 'Marker size'],
     'logx': [False, 'log scale x-axis'],
-    'logy': [False, 'log scale y-axis'],
+    'logy': [False, 'log scale y-axis, or a log scale for the moffat fitting'],
     'ticklab': [True, 'Label tick marks'],
     'majrx': ['5', 'Number of major divisions along x grid'],
     'minrx': ['5', 'Number of minor divisions along x grid'],
@@ -121,6 +122,16 @@ def gauss_center_p(x, I0, sigma, offset, x0, y0):
     """ Gaussian function used to fit the center of the point """
     return I0 * np.exp(-0.5*((x0-x[:,0])**2 + (y0-x[:,1])**2)/sigma**2) + offset
 
+def moffat_p(x, I0, ax, ay, axy, beta, offset):
+    """ Moffat function on vector of points (x,y)"""
+    return I0 / (1.0 + (x[:,0]/ax)**2 + (x[:,1]/ay)**2 + axy*x[:,0]*x[:,1])**beta + offset
+
+def moffat_center_p(x, I0, ax, ay, axy, beta, offset, x0, y0):
+    """ Moffat function on vector of points (x,y), also calibrating the center"""
+    return I0 / (1.0 + ((x[:,0]-x0)/ax)**2 + ((x[:,1]-y0)/ay)**2 + axy*(x[:,0]-x0)*(x[:,1]-y0))**beta + offset
+
+    
+
 
 def fit_2d_new(self, x, y, data, form=None, subsample=4, fig=None):
     params = self.fit2d_pars
@@ -149,23 +160,25 @@ def fit_2d_new(self, x, y, data, form=None, subsample=4, fig=None):
     centerx, centery = x, y
 
     chunk = data[centery-rplot:centery+rplot, centerx-rplot:centerx+rplot]
-    xr = np.arange(centerx-rplot, centerx+rplot) - centerx
-    yr = np.arange(centery-rplot, centery+rplot) - centery
+    xr = np.arange(-rplot, rplot)
+    yr = np.arange(-rplot, rplot)
     X, Y = np.meshgrid(xr, yr)
     p = np.dstack((X.ravel(), Y.ravel()))[0]
 
     if center:
         if form == 'gaussian':
             func = gauss_center_p
-            parnames = ['I0', 'sigma', 'x0', 'y0', 'offset']
+            parnames = ['I0', 'sigma', 'offset', 'x0', 'y0']
         else:
-            func = 0 # TODO : moffat_center
+            func = moffat_center_p
+            parnames = ['I0', 'ax', 'ay', 'axy', 'beta', 'offset', 'x0', 'y0']
     else:
         if form == 'gaussian':
             func = gauss_p
             parnames = ['I0', 'sigma', 'offset']
         else:
-            func = 0 # TODO moffat_p
+            func = moffat_p
+            parnames = ['I0', 'ax', 'ay', 'axy', 'beta', 'offset']
 
     popt, pcov = optimize.curve_fit(func, p, chunk.ravel())
 
@@ -176,37 +189,63 @@ def fit_2d_new(self, x, y, data, form=None, subsample=4, fig=None):
     # If we have enabled centering then we retrieve the new values :
     if center:
         # TODO : retrieve center in image coordinates
-        centerx, centery = popt[3:]
-        popt = popt[0:3]
+        centerx, centery = popt[-2:]
 
-        
-
-    # No background subtraction yet
-    max_dist = math.sqrt(rplot**2+rplot**2)
-    nfitpts = 100
-    fx = np.linspace(0.0, max_dist, nfitpts)
     if form == 'gaussian':
-        fy = gauss_r(fx, *popt)
+        # In the case of a gaussian, we plot the fit function according to the distance to the center
+        max_dist = math.sqrt(rplot**2+rplot**2)
+        nfitpts = 100
+        fx = np.linspace(0.0, max_dist, nfitpts)
+        fy = gauss_r(fx, *popt[0:-2])
+        dist = np.sqrt(p[:,0]**2+p[:,1]**2)
+
+        if fig is None:
+            fig = plt.figure(self._figure_name)
+
+        fig.clf()
+        fig.add_subplot(111)
+        ax = fig.gca()
+        ax.set_xlabel(params['xlabel'][0])
+        ax.set_ylabel(params['ylabel'][0])
+        if params["logx"][0]:
+            ax.set_xscale("log")
+        if params["logy"][0]:
+            ax.set_yscale("log")
+
+        ax.plot(dist, chunk.ravel(), params['marker'][0], label='data')
+        ax.plot(fx, fy, c='r', label= form + " fit")
     else:
-        fy = 0 # TODO moffat_r
+        # In the moffat case, we plot in one window the contour of the solution
+        # And in another window the residual
+        if fig is None:
+            fig = plt.figure(self._figure_name)
+        fig.clf()
+        fig.add_subplot(111)
 
-    dist = np.sqrt(p[:,0]**2+p[:,1]**2)
+        # If we are on a log scale, then we log the data
+        if params['logy'][0]:
+            print(chunk.min(), chunk.max())
+            chunk = np.log(1.0 - chunk.min() + chunk)
 
-    if fig is None:
-        fig = plt.figure(self._figure_name)
+        # We create the meshgrid for the contour plot
+        xr = np.arange(-rplot, rplot, step=1.0/subsample)
+        yr = np.arange(-rplot, rplot, step=1.0/subsample)
+        N = 2.0*rplot*subsample
+        X, Y = np.meshgrid(xr, yr)
+        p = np.dstack((X.ravel(), Y.ravel()))[0]
 
-    fig.clf()
-    fig.add_subplot(111)
-    ax = fig.gca()
-    ax.set_xlabel(params['xlabel'][0])
-    ax.set_ylabel(params['ylabel'][0])
-    if params["logx"][0]:
-        ax.set_xscale("log")
-    if params["logy"][0]:
-        ax.set_yscale("log")
+        if center:
+            Z = moffat_center_p(p, *popt)
+        else:
+            Z = moffat_p(p, *popt)
 
-    ax.plot(dist, chunk.ravel(), params['marker'][0], label='data')
-    ax.plot(fx, fy, c='r', label= form + " fit")
+        Z = Z.reshape((N, N))
+
+        fig, ax = plt.subplots()
+        heatmap = ax.pcolor(chunk, cmap = cm.Blues)
+        contour = ax.contour(X+rplot, Y+rplot, Z, 10, cmap=cm.OrRd)
+
+    
     plt.legend()
     plt.draw()
     plt.show(block=False)    
@@ -215,3 +254,14 @@ def fit_2d_new(self, x, y, data, form=None, subsample=4, fig=None):
 def astro_lab_register(viewer) :
     viewer.exam.register({'f': (fit_2d_new, 'Compute the 2d fit to the sample of data using the specified form')})
     viewer.exam.fit2d_pars = fit2d_pars
+
+
+
+# Test main
+'''ds9 = pyds9.DS9('lab')
+viewer = imexam.connect('lab')
+data = fits.getdata('east-14/2014_01_26/d0030.fits')
+viewer.view(data)
+viewer.scale('log')
+astro_lab_register(viewer)
+viewer.imexam()'''
