@@ -13,6 +13,7 @@ import time
 import pyfits as fits
 import numpy as np
 from scipy import optimize
+from scipy.ndimage import imread
 import math
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -133,16 +134,16 @@ def moffat_center_p(x, I0, ax, ay, axy, beta, offset, x0, y0):
     
 
 
-def fit_2d_new(self, x, y, data, form=None, subsample=4, fig=None):
+def fit_2d_new(self, x, y, data, fig=None):
     params = self.fit2d_pars
 
-    if not form:
-        form = params["fittype"][0]
+    form = params["fittype"][0]
 
     if form not in ('gaussian', 'moffat'):
         warnings.warn('Error : The fitting function must be either \'gaussian\' or \'moffat\'')
         return
 
+    subsample = 10.0
     center = params["center"][0]
     background = params["background"][0]
     radius = params["radius"][0]
@@ -180,11 +181,12 @@ def fit_2d_new(self, x, y, data, form=None, subsample=4, fig=None):
             func = moffat_p
             parnames = ['I0', 'ax', 'ay', 'axy', 'beta', 'offset']
 
-    popt, pcov = optimize.curve_fit(func, p, chunk.ravel())
-
-    print('2D fit, results : ')
-    print('\t'.join(parnames))
-    print('\t'.join(str(x) for x in popt))
+    try:
+        popt, pcov = optimize.curve_fit(func, p, chunk.ravel())
+    except OptimizeWarning:
+        print('Fitting algorithm could not converge, try to change the size of the data (rplot) or to call the fitting closer to the center of the object')
+        return
+        
 
     # If we have enabled centering then we retrieve the new values :
     if center:
@@ -207,6 +209,7 @@ def fit_2d_new(self, x, y, data, form=None, subsample=4, fig=None):
         ax = fig.gca()
         ax.set_xlabel(params['xlabel'][0])
         ax.set_ylabel(params['ylabel'][0])
+        ax.set_title(params["title"][0])
         if params["logx"][0]:
             ax.set_xscale("log")
         if params["logy"][0]:
@@ -224,7 +227,6 @@ def fit_2d_new(self, x, y, data, form=None, subsample=4, fig=None):
 
         # If we are on a log scale, then we log the data
         if params['logy'][0]:
-            print(chunk.min(), chunk.max())
             chunk = np.log(1.0 - chunk.min() + chunk)
 
         # We create the meshgrid for the contour plot
@@ -245,6 +247,15 @@ def fit_2d_new(self, x, y, data, form=None, subsample=4, fig=None):
         heatmap = ax.pcolor(chunk, cmap = cm.Blues)
         contour = ax.contour(X+rplot, Y+rplot, Z, 10, cmap=cm.OrRd)
 
+    print('2D fit, results : ')
+    print('\t'.join(parnames))
+    print('\t'.join(str(x) for x in popt))
+    print('Mouse coordinates : ' + str((x, y)))
+
+    if center:
+        centerx += x
+        centery += y
+        print('Center coordinates : ' + str((centerx, centery)))
     
     plt.legend()
     plt.draw()
@@ -258,10 +269,12 @@ def astro_lab_register(viewer) :
 
 
 # Test main
-'''ds9 = pyds9.DS9('lab')
+'''
+ds9 = pyds9.DS9('lab')
 viewer = imexam.connect('lab')
 data = fits.getdata('east-14/2014_01_26/d0030.fits')
 viewer.view(data)
 viewer.scale('log')
 astro_lab_register(viewer)
-viewer.imexam()'''
+viewer.imexam()
+'''
