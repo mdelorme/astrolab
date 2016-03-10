@@ -256,6 +256,7 @@ def fit_2d_new(self, x, y, data, fig=None):
         centerx += x
         centery += y
         print('Center coordinates : ' + str((centerx, centery)))
+        print('Variance on center coordinates : ' + str((pcov[-2,-2], pcov[-1,-1])))
     
     plt.legend()
     plt.draw()
@@ -269,14 +270,13 @@ def astro_lab_register(viewer) :
 
 
 # Test main
-'''
-ds9 = pyds9.DS9('lab')
+
+'''ds9 = pyds9.DS9('lab')
 viewer = imexam.connect('lab')
 data = fits.getdata('east-14/2014_01_26/d0023.fits')
 viewer.view(data)
 viewer.scale('log')
 astro_lab_register(viewer)
-viewer.exam.fit2d_pars['rplot'][0] = 100
-viewer.imexam()
+viewer.exam.fit2d_pars['rplot'][0] = 10
+viewer.imexam()'''
 
-'''
