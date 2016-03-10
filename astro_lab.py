@@ -181,11 +181,11 @@ def fit_2d_new(self, x, y, data, fig=None):
             func = moffat_p
             parnames = ['I0', 'ax', 'ay', 'axy', 'beta', 'offset']
 
-    try:
-        popt, pcov = optimize.curve_fit(func, p, chunk.ravel())
-    except OptimizeWarning:
-        print('Fitting algorithm could not converge, try to change the size of the data (rplot) or to call the fitting closer to the center of the object')
-        return
+    #try:
+    popt, pcov = optimize.curve_fit(func, p, chunk.ravel())
+    #except OptimizeWarning:
+    #    print('Fitting algorithm could not converge, try to change the size of the data (rplot) or to call the fitting closer to the center of the object')
+    #    return
         
 
     # If we have enabled centering then we retrieve the new values :
@@ -204,7 +204,8 @@ def fit_2d_new(self, x, y, data, fig=None):
         if fig is None:
             fig = plt.figure(self._figure_name)
 
-        fig.clf()
+        fig.clf()   popt, pcov = optimize.curve_fit(func, p, chunk.ravel())
+    e
         fig.add_subplot(111)
         ax = fig.gca()
         ax.set_xlabel(params['xlabel'][0])
@@ -269,12 +270,12 @@ def astro_lab_register(viewer) :
 
 
 # Test main
-'''
-ds9 = pyds9.DS9('lab')
+'''ds9 = pyds9.DS9('lab')
 viewer = imexam.connect('lab')
-data = fits.getdata('east-14/2014_01_26/d0030.fits')
+data = fits.getdata('east-14/2014_01_26/d0023.fits')
 viewer.view(data)
 viewer.scale('log')
 astro_lab_register(viewer)
-viewer.imexam()
-'''
+viewer.exam.fit2d_pars['fittype'][0] = 'moffat'
+viewer.imexam()'''
+
