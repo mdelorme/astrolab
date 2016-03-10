@@ -204,8 +204,7 @@ def fit_2d_new(self, x, y, data, fig=None):
         if fig is None:
             fig = plt.figure(self._figure_name)
 
-        fig.clf()   popt, pcov = optimize.curve_fit(func, p, chunk.ravel())
-    e
+        fig.clf()   
         fig.add_subplot(111)
         ax = fig.gca()
         ax.set_xlabel(params['xlabel'][0])
@@ -270,12 +269,14 @@ def astro_lab_register(viewer) :
 
 
 # Test main
-'''ds9 = pyds9.DS9('lab')
+'''
+ds9 = pyds9.DS9('lab')
 viewer = imexam.connect('lab')
 data = fits.getdata('east-14/2014_01_26/d0023.fits')
 viewer.view(data)
 viewer.scale('log')
 astro_lab_register(viewer)
-viewer.exam.fit2d_pars['fittype'][0] = 'moffat'
-viewer.imexam()'''
+viewer.exam.fit2d_pars['rplot'][0] = 100
+viewer.imexam()
 
+'''
