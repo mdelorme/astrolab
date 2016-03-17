@@ -106,7 +106,7 @@ def export_headers(file_out, folder):
             if 'DATE-OBS' not in header or 'EXPTIME' not in header:
                 print('Warning : Date of observation or exposition time not found in meta-data of file : ' + folder + '/' + f)
             else:
-                fout.write('{0} {1}\n'.format(header['DATE-OBS'], header['EXPTIME']))
+                fout.write('{0} {1} {2}\n'.format(folder+'/'+f, header['DATE-OBS'], header['EXPTIME']))
 
     fout.close()
 
