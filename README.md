@@ -26,7 +26,7 @@ git pull
 Then start the iptyhon session by running the main script :
 
 ```shell
-./astr_lab.sh
+./astro_lab.sh
 ```
 
 You can now proceed with your project.
