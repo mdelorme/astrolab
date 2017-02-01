@@ -50,7 +50,8 @@ fit2d_pars = {
     'majrx': ['5', 'Number of major divisions along x grid'],
     'minrx': ['5', 'Number of minor divisions along x grid'],
     'majry': ['5', 'Number of major divisions along y grid'],
-    'minry': ['5', 'Number of minor divisions along y grid']}
+    'minry': ['5', 'Number of minor divisions along y grid'],
+    'filename': ['2dfit.png', 'Name of the file where the fit plot will be saved']}
 
 # Functions not found in any package that are required for the lab
 def combine(file_list, ctype='median'):
@@ -142,6 +143,8 @@ def fit_2d_new(self, x, y, data, fig=None):
     if form not in ('gaussian', 'moffat'):
         warnings.warn('Error : The fitting function must be either \'gaussian\' or \'moffat\'')
         return
+    plt.ion()
+    
 
     subsample = 10.0
     center = params["center"][0]
@@ -188,7 +191,6 @@ def fit_2d_new(self, x, y, data, fig=None):
     #except OptimizeWarning:
     #    print('Fitting algorithm could not converge, try to change the size of the data (rplot) or to call the fitting closer to the center of the object')
     #    return
-        
 
     # If we have enabled centering then we retrieve the new values :
     if center:
@@ -203,10 +205,7 @@ def fit_2d_new(self, x, y, data, fig=None):
         fy = gauss_r(fx, *popt[0:-2])
         dist = np.sqrt(p[:,0]**2+p[:,1]**2)
 
-        if fig is None:
-            fig = plt.figure(self._figure_name)
-
-        fig.clf()   
+        fig = plt.figure(self._figure_name)
         fig.add_subplot(111)
         ax = fig.gca()
         ax.set_xlabel(params['xlabel'][0])
@@ -261,9 +260,10 @@ def fit_2d_new(self, x, y, data, fig=None):
         print('Variance on center coordinates : ' + str((pcov[-2,-2], pcov[-1,-1])))
     
     plt.legend()
-    plt.draw()
-    plt.show(block=True)    
-    time.sleep(self.sleep_time)
+    fn = params["filename"][0]
+    plt.savefig(fn)
+    plt.close()
+    print('Plot saved to ' + fn)
 
 def astro_lab_register(viewer) :
     viewer.exam.register({'f': (fit_2d_new, 'Compute the 2d fit to the sample of data using the specified form')})
