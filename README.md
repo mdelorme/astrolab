@@ -3,10 +3,11 @@
 ## Description
 
 This repository is meant for the Introduction to Astronomy class at University of Surrey.
-It mainly consists of two files setting up the necessary parameters to be able to use ds9, imexam and the fitting functions in the moons of Jupiter project.
+It mainly consists of two files setting up the necessary parameters to be able to use ds9, imexam and the fitting functions in the moons of Jupiter project and an additional Fortran file used for the final fitting part.
 
-`astro_lab.py` is a Python script setting up the environment to work on the Surrey students account. It also contains fitting routines and general "glue code" to link ds9 and imexam.
-`astro_lab.sh` is the main shell script that starts an ipython session while loading `astro_lab.py`.
+* `astro_lab.py` is a Python script setting up the environment to work on the Surrey students account. It also contains fitting routines and general "glue code" to link ds9 and imexam.
+* `astro_lab.sh` is the main shell script that starts an ipython session while loading `astro_lab.py`.
+* `fitting.f90` is the fitting subroutine presented in the project script. Use this only is you want to use Fortran to fit the final parameters in the project. You can also use Python to do the fit if you prefer so.
 
 ## Usage
 
