@@ -155,10 +155,12 @@ def fit_2d_new(self, x, y, data, fig=None):
     loc_beta = params["beta"][0]
 
     magzero = params["magzero"][0]
-    rplot = params["rplot"][0]
+    rplot = int(params["rplot"][0])
     fitplot = params["fitplot"][0]
         
-    centerx, centery = x, y
+    centerx, centery = int(x), int(y)
+    print('x/y = {} {}'.format(x, y))
+    print('rplot = {}'.format(rplot))
 
     chunk = data[centery-rplot:centery+rplot, centerx-rplot:centerx+rplot]
     xr = np.arange(-rplot, rplot)
