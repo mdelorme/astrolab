@@ -262,7 +262,7 @@ def fit_2d_new(self, x, y, data, fig=None):
     
     plt.legend()
     plt.draw()
-    plt.show(block=False)    
+    plt.show(block=True)    
     time.sleep(self.sleep_time)
 
 def astro_lab_register(viewer) :
